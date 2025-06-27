@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ChatGPT Clone</title>
+    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- Marked.js for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Highlight.js for code -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>ChatGPT Clone</h1>
+        <div id="chat-box"></div>
+        <form id="chat-form">
+            <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off" required />
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('chat-form');
+        const input = document.getElementById('user-input');
+        const chatBox = document.getElementById('chat-box');
+
+        let fullHistory = JSON.parse(localStorage.getItem("chatHistory")) || [];
+
+        fullHistory.forEach(({ sender, content }) => {
+            appendMessage(sender, content, false);
+        });
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const message = input.value;
+            appendMessage("You", message, true);
+            input.value = "";
+
+            const botDiv = document.createElement('div');
+            botDiv.classList.add('message');
+            botDiv.innerHTML = "<strong>🤖 ChatGPT:</strong> <span id='stream'></span>";
+            chatBox.appendChild(botDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            const res = await fetch('/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let content = "";
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split("\n");
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        const text = line.replace("data: ", "");
+                        content += text;
+                        document.getElementById('stream').innerHTML = marked.parse(content);
+                        document.querySelectorAll('pre code').forEach((el) => hljs.highlightElement(el));
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                }
+            }
+
+            fullHistory.push({ sender: "ChatGPT", content });
+            localStorage.setItem("chatHistory", JSON.stringify(fullHistory));
+        };
+
+        function appendMessage(sender, text, save = false) {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message');
+
+            const avatar = sender === "You" ? "🧑" : "🤖";
+            msgDiv.innerHTML = `<strong>${avatar} ${sender}:</strong> ${marked.parse(text)}`;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            if (save) {
+                fullHistory.push({ sender, content: text });
+                localStorage.setItem("chatHistory", JSON.stringify(fullHistory));
+            }
+        }
+    </script>
+</body>
+</html>
